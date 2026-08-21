@@ -21,10 +21,12 @@ RUN bun install --frozen-lockfile
 COPY . .
 ENV NODE_ENV=production
 ENV NITRO_PRESET=node-server
-# Set when the app is served under a sub-path by a reverse proxy / ZTA tunnel,
-# e.g. --build-arg APP_BASE_PATH=/catalytic/. Leave empty when served at root.
-ARG APP_BASE_PATH=
+# Cisco Secure Access normally publishes a dedicated hostname and preserves `/`,
+# so the default is root. Set this only when the public URL genuinely contains a
+# path prefix, e.g. --build-arg APP_BASE_PATH=/catalytic/.
+ARG APP_BASE_PATH=/
 ENV APP_BASE_PATH=${APP_BASE_PATH}
+ENV NITRO_APP_BASE_URL=${APP_BASE_PATH}
 RUN bun run build
 
 ##############################
@@ -36,6 +38,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOST=0.0.0.0
+ENV NITRO_PORT=3000
+ENV NITRO_HOST=0.0.0.0
+ARG APP_BASE_PATH=/
+ENV APP_BASE_PATH=${APP_BASE_PATH}
+ENV NITRO_APP_BASE_URL=${APP_BASE_PATH}
 
 # The Nitro node-server output is fully self-contained:
 # .output/server (bundled server + deps) and .output/public (static assets).
@@ -43,5 +50,10 @@ COPY --from=builder /app/.output ./.output
 
 USER node
 EXPOSE 3000
+
+# BusyBox wget is included in Alpine. This catches missing SSR routes and an
+# incorrectly configured base path instead of leaving a broken container healthy.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -q -O /dev/null "http://127.0.0.1:${PORT}${APP_BASE_PATH}" || exit 1
 
 CMD ["node", ".output/server/index.mjs"]

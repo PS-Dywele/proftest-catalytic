@@ -18,10 +18,15 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 const rawBase = process.env.APP_BASE_PATH?.trim();
 const basePath = rawBase && rawBase !== "/" ? `/${rawBase.replace(/^\/+|\/+$/g, "")}/` : "/";
 
+// Nitro reads this during its build and uses it to mount SSR, server functions,
+// and public assets at the same path Vite emits into the browser bundle.
+// Keeping this in sync is essential when a reverse proxy publishes a path prefix.
+process.env.NITRO_APP_BASE_URL = basePath;
+
 export default defineConfig({
-  // Force consistent, root-absolute asset URLs so hashed CSS/JS emitted into
-  // /assets/ are always referenced as /assets/... — this keeps the app working
-  // behind reverse proxies / ZTA tunnels where relative paths resolve wrongly.
+  // Vite exposes this value as import.meta.env.BASE_URL, which the router also
+  // consumes. Root deployments emit /assets/*; prefixed deployments emit
+  // /<prefix>/assets/*.
   vite: {
     base: basePath,
     build: {
