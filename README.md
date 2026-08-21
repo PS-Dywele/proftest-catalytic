@@ -92,26 +92,46 @@ Live preview: [https://aura-pilot-app.lovable.app](https://aura-pilot-app.lovabl
 
 MIT
 
-## Deploying behind a reverse proxy / ZTA tunnel
+## Docker and Cisco Secure Access ZTA
 
-Asset URLs are emitted root-absolute (`/assets/...`) by default, which is correct
-when the app is served at the domain root.
-
-If your proxy (e.g. Cisco Secure Access ZTA) exposes the app under a **sub-path**,
-build with that prefix so CSS/JS resolve correctly instead of 404-ing (which shows
-as a page that loads then hangs on a spinner):
+Cisco Secure Access normally gives the private application its own public hostname
+and preserves request paths. For that recommended setup, publish the container at
+the domain root and **do not** add a build argument:
 
 ```bash
-docker build --build-arg APP_BASE_PATH=/catalytic/ -t catalytic .
-docker run -d --name catalytic -p 3000:3000 --restart unless-stopped catalytic
+docker build --pull -t catalytic-private-test:latest .
+docker run -d \
+  --name catalytic-private-test \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  -e LOVABLE_API_KEY=your_key_here \
+  catalytic-private-test:latest
 ```
 
-Served at root, no build arg is needed:
+Configure the ZTA private resource to target the VM's internal hostname/IP on port
+`3000`. The public URL should open `/`, and the tunnel must preserve and forward
+`/assets/*` and `/_serverFn/*` unchanged.
+
+Only use a prefix when the browser's public URL literally includes it, such as
+`https://apps.example.com/catalytic/`. The same prefix must be supplied at build
+and runtime:
 
 ```bash
-docker build -t catalytic .
-docker run -d --name catalytic -p 3000:3000 --restart unless-stopped catalytic
+docker build --pull \
+  --build-arg APP_BASE_PATH=/catalytic/ \
+  -t catalytic-private-test:latest .
+
+docker run -d \
+  --name catalytic-private-test \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  -e APP_BASE_PATH=/catalytic/ \
+  -e NITRO_APP_BASE_URL=/catalytic/ \
+  -e LOVABLE_API_KEY=your_key_here \
+  catalytic-private-test:latest
 ```
 
-Also make sure the tunnel forwards `/assets/*` and `/_serverFn/*` to the app and
-does not rewrite or strip those paths.
+Do not use the prefixed build for a dedicated ZTA hostname whose public URL starts
+at `/`; doing so makes the HTML and asset routes disagree. Check the deployment
+with `docker ps` (health should become `healthy`), `docker logs catalytic-private-test`,
+and `curl -I http://127.0.0.1:3000/` on the VM before testing through ZTA.
