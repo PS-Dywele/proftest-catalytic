@@ -1,4 +1,4 @@
-# Lumen — AI Productivity Dashboard
+# Catalytic Private Test — Enterprise AI Workspace
 
 A clean, modern, single-page AI productivity workspace. Draft emails, summarize meetings, and plan your day — all powered by AI.
 

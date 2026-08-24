@@ -46,7 +46,7 @@ ENV NITRO_APP_BASE_URL=${APP_BASE_PATH}
 
 # The Nitro node-server output is fully self-contained:
 # .output/server (bundled server + deps) and .output/public (static assets).
-COPY --from=builder /app/.output ./.output
+COPY --from=builder --chown=node:node /app/.output ./.output
 
 USER node
 EXPOSE 3000
