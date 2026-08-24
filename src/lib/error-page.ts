@@ -1,3 +1,10 @@
+function homeHref(): string {
+  const raw =
+    (typeof process !== "undefined" ? process.env?.["APP_BASE_PATH"]?.trim() : undefined) || "/";
+  if (raw === "/" || raw === "") return "/";
+  return `/${raw.replace(/^\/+|\/+$/g, "")}/`;
+}
+
 export function renderErrorPage(): string {
   return `<!doctype html>
 <html lang="en">
