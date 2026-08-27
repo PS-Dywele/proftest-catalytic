@@ -37,18 +37,36 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
   });
 }
 
+function withDeploymentHeaders(response: Response): Response {
+  const headers = new Headers(response.headers);
+  const contentType = headers.get("content-type")?.toLowerCase() ?? "";
+
+  headers.set("x-content-type-options", "nosniff");
+  if (contentType.includes("text/html")) {
+    headers.set("cache-control", "no-store, max-age=0, must-revalidate");
+    headers.set("pragma", "no-cache");
+    headers.set("expires", "0");
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      return withDeploymentHeaders(await normalizeCatastrophicSsrResponse(response));
     } catch (error) {
       console.error(error);
-      return new Response(renderErrorPage(), {
+      return withDeploymentHeaders(new Response(renderErrorPage(), {
         status: 500,
         headers: { "content-type": "text/html; charset=utf-8" },
-      });
+      }));
     }
   },
 };

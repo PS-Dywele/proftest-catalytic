@@ -47,13 +47,14 @@ ENV NITRO_APP_BASE_URL=${APP_BASE_PATH}
 # The Nitro node-server output is fully self-contained:
 # .output/server (bundled server + deps) and .output/public (static assets).
 COPY --from=builder --chown=node:node /app/.output ./.output
+COPY --from=builder --chown=node:node /app/scripts/verify-assets.mjs ./scripts/verify-assets.mjs
 
 USER node
 EXPOSE 3000
 
-# BusyBox wget is included in Alpine. This catches missing SSR routes and an
-# incorrectly configured base path instead of leaving a broken container healthy.
+# Validate the rendered document and every local script/stylesheet it references.
+# This catches stale manifests, missing chunks, wrong base paths, and MIME errors.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -q -O /dev/null "http://127.0.0.1:${PORT}${APP_BASE_PATH}" || exit 1
+  CMD node ./scripts/verify-assets.mjs "http://127.0.0.1:${PORT}${APP_BASE_PATH}" --timeout=4000 --quiet || exit 1
 
 CMD ["node", ".output/server/index.mjs"]
