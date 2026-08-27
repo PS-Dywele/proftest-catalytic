@@ -125,7 +125,10 @@ for (const asset of assets) {
   if (compareIdentity) {
     const identity = await fetchMeasured(assetUrl, "identity");
     printResult("IDENTITY", assetUrl, identity);
-    if (!identity.ok || identity.bytes === 0) failures += 1;
+    const emptyIdentityExecutable = asset.type === "javascript" && identity.bytes === 0;
+    if (!identity.ok || emptyIdentityExecutable || !identity.type.toLowerCase().includes(asset.type)) {
+      failures += 1;
+    }
   }
 }
 
