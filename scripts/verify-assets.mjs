@@ -25,11 +25,13 @@ function localAssetUrls(html, documentUrl) {
   for (const pattern of patterns) {
     for (const match of html.matchAll(pattern.regex)) {
       const resolved = new URL(match[1], documentUrl);
-      if (resolved.origin === documentUrl.origin) urls.set(resolved.href, pattern.type);
+      if (resolved.origin === documentUrl.origin) {
+        urls.set(`${pattern.type}:${resolved.href}`, { url: resolved.href, type: pattern.type });
+      }
     }
   }
 
-  return [...urls.entries()].map(([url, type]) => ({ url, type }));
+  return [...urls.values()];
 }
 
 async function fetchMeasured(url, acceptEncoding) {
