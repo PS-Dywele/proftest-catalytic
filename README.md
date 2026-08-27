@@ -96,21 +96,26 @@ MIT
 
 Cisco Secure Access normally gives the private application its own public hostname
 and preserves request paths. For that recommended setup, publish the container at
-the domain root and **do not** add a build argument:
+the domain root and **do not** add a build argument. Use a unique image tag for each
+release so the running container cannot be mistaken for an older build:
 
 ```bash
-docker build --pull -t catalytic-private-test:latest .
+docker build --pull --no-cache -t catalytic-private-test:2026-08-27 .
+docker stop catalytic-private-test 2>/dev/null || true
+docker rm catalytic-private-test 2>/dev/null || true
 docker run -d \
   --name catalytic-private-test \
   --restart unless-stopped \
   -p 3000:3000 \
   -e LOVABLE_API_KEY=your_key_here \
-  catalytic-private-test:latest
+  catalytic-private-test:2026-08-27
 ```
 
 Configure the ZTA private resource to target the VM's internal hostname/IP on port
 `3000`. The public URL should open `/`, and the tunnel must preserve and forward
-`/assets/*` and `/_serverFn/*` unchanged.
+`/assets/*` and `/_serverFn/*` unchanged. Do not cache HTML at the tunnel: documents
+are explicitly returned with `Cache-Control: no-store`, while hashed assets remain
+safe to cache as immutable files.
 
 Only use a prefix when the browser's public URL literally includes it, such as
 `https://apps.example.com/catalytic/`. The same prefix must be supplied at build
@@ -132,6 +137,40 @@ docker run -d \
 ```
 
 Do not use the prefixed build for a dedicated ZTA hostname whose public URL starts
-at `/`; doing so makes the HTML and asset routes disagree. Check the deployment
-with `docker ps` (health should become `healthy`), `docker logs catalytic-private-test`,
-and `curl -I http://127.0.0.1:3000/` on the VM before testing through ZTA.
+at `/`; doing so makes the HTML and asset routes disagree.
+
+### Verify every generated asset
+
+The container health check now loads the live HTML and verifies every local script
+and stylesheet referenced by it. After starting the container, wait for it to become
+healthy and run the same diagnostic manually:
+
+```bash
+docker ps
+docker logs catalytic-private-test
+docker exec catalytic-private-test \
+  node scripts/verify-assets.mjs http://127.0.0.1:3000/ --compare-identity
+```
+
+Then run the diagnostic from a machine that reaches the site through Cisco, replacing
+the example with the actual Cisco-published HTTPS URL:
+
+```bash
+bun run verify:assets -- https://your-cisco-app.example.com/ --compare-identity
+```
+
+The report includes status, elapsed time, redirects, MIME type, response size,
+content encoding, and cache headers for each referenced asset. Interpret it as follows:
+
+- **Local and Cisco checks pass:** the deployment is ready.
+- **Local passes, Cisco times out:** the container is healthy; check the ZTA private
+  resource/connector and bypass response caching or content rewriting for HTML and
+  JavaScript.
+- **Normal requests time out but `IDENTITY` succeeds:** disable compression/content
+  transformation for this private application in Cisco.
+- **Local returns 404:** rebuild without a path prefix and recreate the container;
+  the HTML and asset set inside the running image do not match.
+
+The browser-visible Cisco URL determines the base path. A direct origin such as
+`http://<public-ip>:3000/` is a root deployment, so use the default build with no
+`APP_BASE_PATH` argument.
