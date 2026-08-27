@@ -15,28 +15,21 @@ if (!targetArg) {
 }
 
 function localAssetUrls(html, documentUrl) {
-  const urls = new Set();
+  const urls = new Map();
   const patterns = [
-    /<script\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi,
-    /<link\b[^>]*\brel=["'][^"']*stylesheet[^"']*["'][^>]*\bhref=["']([^"']+)["'][^>]*>/gi,
-    /<link\b[^>]*\bhref=["']([^"']+)["'][^>]*\brel=["'][^"']*stylesheet[^"']*["'][^>]*>/gi,
+    { regex: /<script\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi, type: "javascript" },
+    { regex: /<link\b[^>]*\brel=["'][^"']*stylesheet[^"']*["'][^>]*\bhref=["']([^"']+)["'][^>]*>/gi, type: "text/css" },
+    { regex: /<link\b[^>]*\bhref=["']([^"']+)["'][^>]*\brel=["'][^"']*stylesheet[^"']*["'][^>]*>/gi, type: "text/css" },
   ];
 
   for (const pattern of patterns) {
-    for (const match of html.matchAll(pattern)) {
+    for (const match of html.matchAll(pattern.regex)) {
       const resolved = new URL(match[1], documentUrl);
-      if (resolved.origin === documentUrl.origin) urls.add(resolved.href);
+      if (resolved.origin === documentUrl.origin) urls.set(resolved.href, pattern.type);
     }
   }
 
-  return [...urls];
-}
-
-function expectedType(url) {
-  const pathname = new URL(url).pathname;
-  if (pathname.endsWith(".css")) return "text/css";
-  if (pathname.endsWith(".js") || pathname.endsWith(".mjs")) return "javascript";
-  return "";
+  return [...urls.entries()].map(([url, type]) => ({ url, type }));
 }
 
 async function fetchMeasured(url, acceptEncoding) {
@@ -120,11 +113,12 @@ if (assets.length === 0) {
 }
 
 let failures = 0;
-for (const assetUrl of assets) {
+for (const asset of assets) {
+  const assetUrl = asset.url;
   const normal = await fetchMeasured(assetUrl);
   printResult("ASSET", assetUrl, normal);
-  const typeNeedle = expectedType(assetUrl);
-  if (!normal.ok || normal.bytes === 0 || (typeNeedle && !normal.type.toLowerCase().includes(typeNeedle))) {
+  const emptyExecutable = asset.type === "javascript" && normal.bytes === 0;
+  if (!normal.ok || emptyExecutable || !normal.type.toLowerCase().includes(asset.type)) {
     failures += 1;
   }
 
