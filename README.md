@@ -174,3 +174,24 @@ content encoding, and cache headers for each referenced asset. Interpret it as f
 The browser-visible Cisco URL determines the base path. A direct origin such as
 `http://<public-ip>:3000/` is a root deployment, so use the default build with no
 `APP_BASE_PATH` argument.
+
+### Response compression (fixes "pending forever" JS requests)
+
+Uncompressed bundles are the most common cause of a JavaScript request that stays
+pending behind an inspecting proxy: the tunnel buffers and scans the full body
+before releasing a single byte. The build now ships precompressed `.gz`/`.br`
+copies of every static asset (`nitro.config.ts` → `compressPublicAssets`), and the
+SSR HTML is gzipped on the fly in `src/server.ts`. The main bundle drops from
+~465 KB to ~124 KB brotli / ~144 KB gzip.
+
+Identity responses are still served correctly when a client sends
+`Accept-Encoding: identity`, so `--compare-identity` remains a valid A/B test.
+
+### After every rebuild, force a fresh HTML load
+
+Asset filenames are content-hashed, so an old cached `index.html` points at chunk
+names that no longer exist in the new image. HTML is now served with
+`Cache-Control: no-store`, but a browser or tunnel that cached the previous HTML
+must be flushed once: hard-reload (Ctrl+Shift+R) or clear the Cisco cache for the
+application after recreating the container.
+
