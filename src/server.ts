@@ -55,12 +55,51 @@ function withDeploymentHeaders(response: Response): Response {
   });
 }
 
+const COMPRESSIBLE = [
+  "text/html",
+  "text/css",
+  "text/javascript",
+  "application/javascript",
+  "application/json",
+  "image/svg+xml",
+];
+
+// Large uncompressed JS bundles are a common stall point behind inspecting
+// proxies (Cisco Secure Access / ZTA), which buffer the whole body before
+// releasing it. Nitro's static handler serves identity bytes, so gzip here.
+function withCompression(request: Request, response: Response): Response {
+  if (!response.body || request.method === "HEAD") return response;
+  if (response.status < 200 || response.status === 204 || response.status === 304) return response;
+  if (response.headers.get("content-encoding")) return response;
+
+  const accepts = request.headers.get("accept-encoding")?.toLowerCase() ?? "";
+  if (!accepts.includes("gzip")) return response;
+  if (typeof CompressionStream === "undefined") return response;
+
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  if (!COMPRESSIBLE.some((type) => contentType.includes(type))) return response;
+
+  const headers = new Headers(response.headers);
+  headers.set("content-encoding", "gzip");
+  headers.delete("content-length");
+  headers.append("vary", "accept-encoding");
+
+  return new Response(response.body.pipeThrough(new CompressionStream("gzip")), {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return withDeploymentHeaders(await normalizeCatastrophicSsrResponse(response));
+      return withCompression(
+        request,
+        withDeploymentHeaders(await normalizeCatastrophicSsrResponse(response)),
+      );
     } catch (error) {
       console.error(error);
       return withDeploymentHeaders(new Response(renderErrorPage(), {
@@ -70,3 +109,4 @@ export default {
     }
   },
 };
+
